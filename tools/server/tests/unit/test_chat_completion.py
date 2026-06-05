@@ -353,6 +353,7 @@ def test_chat_completion_with_timings_per_token():
         "timings_per_token": True,
     })
     stats_received = False
+    usage_received = False
     for i, data in enumerate(res):
         if i == 0:
             # Check first role message for stream=True
@@ -362,6 +363,14 @@ def test_chat_completion_with_timings_per_token():
         else:
             if data["choices"]:
                 assert "role" not in data["choices"][0]["delta"]
+                if "timings" in data:
+                    assert "prompt_per_second" in data["timings"]
+                    assert "predicted_per_second" in data["timings"]
+                    assert "predicted_n" in data["timings"]
+                    assert data["timings"]["predicted_n"] <= 10
+                    stats_received = True
+                if "usage" in data:
+                    usage_received = True
             else:
                 assert "timings" in data
                 assert "prompt_per_second" in data["timings"]
@@ -369,7 +378,37 @@ def test_chat_completion_with_timings_per_token():
                 assert "predicted_n" in data["timings"]
                 assert data["timings"]["predicted_n"] <= 10
                 stats_received = True
+                if "usage" in data:
+                    usage_received = True
     assert stats_received
+    assert usage_received
+
+
+def test_chat_completion_stream_include_usage_on_finish_chunk_only():
+    global server
+    server.start()
+    res = server.make_stream_request("POST", "/chat/completions", data={
+        "max_tokens": 12,
+        "messages": [{"role": "user", "content": "test"}],
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    })
+
+    usage_chunk_count = 0
+    finish_with_usage = 0
+
+    for data in res:
+        # Regression guard: avoid trailing usage-only chunks with empty choices.
+        assert data["choices"], f"Unexpected empty choices chunk: {data}"
+        choice = data["choices"][0]
+
+        if "usage" in data:
+            usage_chunk_count += 1
+            if choice["finish_reason"] in ["stop", "length", "tool_calls"]:
+                finish_with_usage += 1
+
+    assert usage_chunk_count == 1, f"Expected usage exactly once, got {usage_chunk_count}"
+    assert finish_with_usage == 1, "Expected usage on the terminal finish chunk"
 
 
 def test_logprobs():

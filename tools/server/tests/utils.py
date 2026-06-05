@@ -457,12 +457,11 @@ class ServerProcess:
                             arguments_parts += 1
                         tool_call_parts += 1
                 else:
-                    # When `include_usage` is True (the default), we expect the last chunk of the stream
-                    # immediately preceding the `data: [DONE]` message to contain a `choices` field with an empty array
-                    # and a `usage` field containing the usage statistics (n.b., llama-server also returns `timings` in
-                    # the last chunk)
-                    assert 'usage' in chunk, f"Expected finish_reason in chunk: {chunk}"
-                    assert 'timings' in chunk, f"Expected finish_reason in chunk: {chunk}"
+                    # Some clients are stricter about terminal streaming chunks.
+                    # Accept usage/timings either on the final finish chunk or on a
+                    # trailing empty-choices chunk.
+                    assert 'usage' in chunk, f"Expected usage in chunk: {chunk}"
+                    assert 'timings' in chunk, f"Expected timings in chunk: {chunk}"
             print(f'Streamed response had {content_parts} content parts, {reasoning_content_parts} reasoning_content parts, {tool_call_parts} tool call parts incl. {arguments_parts} arguments parts')
             result = dict(
                 choices=[

@@ -248,6 +248,14 @@ common_reasoning_budget_state common_reasoning_budget_get_state(const struct lla
     return ((const common_reasoning_budget_ctx *)smpl->ctx)->state;
 }
 
+const std::vector<llama_token> * common_reasoning_budget_get_matched_end(const struct llama_sampler * smpl) {
+    if (!smpl) {
+        return nullptr;
+    }
+    const auto * ctx = (const common_reasoning_budget_ctx *) smpl->ctx;
+    return &ctx->end_matcher.tokens;
+}
+
 bool common_reasoning_budget_force(struct llama_sampler * smpl) {
     if (!smpl) {
         return false;
