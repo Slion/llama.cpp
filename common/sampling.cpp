@@ -596,6 +596,42 @@ llama_token common_sampler_sample(struct common_sampler * gsmpl, struct llama_co
 
     id = cur_p.data[cur_p.selected].id;
 
+    auto avoid_early_eog_in_reasoning = [&](llama_token & sampled_id) {
+        if (!rbudget) {
+            return;
+        }
+
+        const auto state = common_reasoning_budget_get_state(rbudget);
+        if (state != REASONING_BUDGET_COUNTING && state != REASONING_BUDGET_WAITING_UTF8) {
+            return;
+        }
+
+        const llama_model * model = llama_get_model(ctx);
+        const llama_vocab * vocab = llama_model_get_vocab(model);
+        if (!llama_token_is_eog(vocab, sampled_id)) {
+            return;
+        }
+
+        if (!common_reasoning_budget_force(rbudget)) {
+            return;
+        }
+
+        // Resample once with reasoning budget forced so we emit the closing sequence
+        // instead of terminating early with EOS while still inside reasoning.
+        gsmpl->set_logits(ctx, idx);
+        llama_sampler_apply(rbudget, &cur_p);
+
+        if (grammar_first || grammar_should_apply(gsmpl)) {
+            llama_sampler_apply(grmr, &cur_p);
+        }
+
+        llama_sampler_apply(chain, &cur_p);
+        GGML_ASSERT(cur_p.selected != -1 && "no selected token during forced-reasoning resample");
+        sampled_id = cur_p.data[cur_p.selected].id;
+    };
+
+    avoid_early_eog_in_reasoning(id);
+
     if (grammar_first || !grammar_should_apply(gsmpl)) {
         return id;
     }
@@ -628,6 +664,8 @@ llama_token common_sampler_sample(struct common_sampler * gsmpl, struct llama_co
     GGML_ASSERT(cur_p.selected != -1 && "no selected token during sampling - check your sampling configuration");
 
     id = cur_p.data[cur_p.selected].id;
+
+    avoid_early_eog_in_reasoning(id);
 
     return id;
 }

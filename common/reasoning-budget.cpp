@@ -293,9 +293,11 @@ bool common_reasoning_budget_force(struct llama_sampler * smpl) {
 
     auto * ctx = (common_reasoning_budget_ctx *) smpl->ctx;
 
-    // only a sampler that is actively counting down the budget may be forced;
-    // any other state (idle, already forcing/waiting, or done) is left untouched
-    if (ctx->state != REASONING_BUDGET_COUNTING) {
+    // Only active reasoning states may be forced.
+    // In WAITING_UTF8 we are still inside reasoning and should still be able
+    // to transition to FORCING when upstream sampling wants to avoid early EOG.
+	// SL: REASONING_BUDGET_WAITING_UTF8 was added later on and was not tested at time of commit
+    if (ctx->state != REASONING_BUDGET_COUNTING && ctx->state != REASONING_BUDGET_WAITING_UTF8) {
         return false;
     }
 

@@ -12,6 +12,32 @@
 
 using json = nlohmann::ordered_json;
 
+namespace {
+
+std::string strip_reasoning_markers(std::string text) {
+    const std::vector<std::string> markers = {
+        "<think>",
+        "</think>",
+        "<thinking>",
+        "</thinking>",
+    };
+
+    for (const auto & marker : markers) {
+        if (marker.empty()) {
+            continue;
+        }
+
+        size_t pos = 0;
+        while ((pos = text.find(marker, pos)) != std::string::npos) {
+            text.erase(pos, marker.size());
+        }
+    }
+
+    return text;
+}
+
+} // namespace
+
 //
 // task_params
 //
@@ -171,6 +197,19 @@ common_chat_msg task_result_state::update_chat_msg(
         generated_text,
         is_partial,
         chat_parser_params);
+
+    // Some clients only render `content` deltas. When deepseek-style reasoning
+    // is enabled for streamed chat, mirror reasoning into content if the parser
+    // produced reasoning-only output without tool calls. Strip common thinking
+    // markers so the visible content does not leak raw reasoning tags.
+    if (!is_partial
+        && chat_parser_params.reasoning_in_content
+        && new_msg.content.empty()
+        && new_msg.tool_calls.empty()
+        && !new_msg.reasoning_content.empty()) {
+        new_msg.content = strip_reasoning_markers(new_msg.reasoning_content);
+    }
+
     if (!new_msg.empty()) {
         new_msg.set_tool_call_ids(generated_tool_call_ids, gen_tool_call_id);
         chat_msg = new_msg;
@@ -528,17 +567,10 @@ json server_task_result_cmpl_final::to_json_oaicompat_chat_stream() {
     });
 
     if (include_usage) {
-        // OpenAI API spec for chat.completion.chunks specifies an empty `choices` array for the last chunk when including usage
-        // https://platform.openai.com/docs/api-reference/chat_streaming/streaming#chat_streaming/streaming-choices
-        deltas.push_back({
-            {"choices", json::array()},
-            {"created",            t},
-            {"id",                 oaicompat_cmpl_id},
-            {"model",              oaicompat_model},
-            {"system_fingerprint", std::string(llama_build_info())},
-            {"object",             "chat.completion.chunk"},
-            {"usage",              usage_json_oaicompat()},
-        });
+        // Keep usage on the terminal finish chunk instead of emitting a
+        // trailing empty-choices event. Some OpenAI-compatible clients stop
+        // consuming as soon as they see a chunk without choices.
+        deltas.back()["usage"] = usage_json_oaicompat();
     }
 
     if (timings.prompt_n >= 0) {

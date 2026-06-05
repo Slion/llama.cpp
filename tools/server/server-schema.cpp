@@ -299,7 +299,10 @@ std::vector<std::unique_ptr<field>> make_llama_cmpl_schema(const common_params &
         ->set_handler([&](field_eval_context & ctx, const json & data) {
             auto reasoning_format = common_reasoning_format_from_name(data.at("reasoning_format").get<std::string>());
             ctx.params.chat_parser_params.reasoning_format = reasoning_format;
-            ctx.params.chat_parser_params.reasoning_in_content = ctx.params.stream && (reasoning_format == COMMON_REASONING_FORMAT_DEEPSEEK_LEGACY);
+            ctx.params.chat_parser_params.reasoning_in_content = ctx.params.stream && (
+                reasoning_format == COMMON_REASONING_FORMAT_DEEPSEEK_LEGACY ||
+                reasoning_format == COMMON_REASONING_FORMAT_DEEPSEEK
+            );
         }));
 
     add((new field_str("generation_prompt"))
@@ -559,7 +562,10 @@ task_params eval_llama_cmpl_schema(
 
         // if "reasoning_format" is not provided, its handler will not be called, we will need to handle it here
         auto reasoning_format = params.chat_parser_params.reasoning_format;
-        params.chat_parser_params.reasoning_in_content = params.stream && (reasoning_format == COMMON_REASONING_FORMAT_DEEPSEEK_LEGACY);
+        params.chat_parser_params.reasoning_in_content = params.stream && (
+            reasoning_format == COMMON_REASONING_FORMAT_DEEPSEEK_LEGACY ||
+            reasoning_format == COMMON_REASONING_FORMAT_DEEPSEEK
+        );
     }
 
     // debugging
